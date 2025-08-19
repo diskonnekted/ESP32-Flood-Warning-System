@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESP32 Flood Early Warning System - Dashboard</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Chart.js untuk grafik -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <!-- Font Awesome untuk icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#1e40af',
+                        secondary: '#64748b',
+                        success: '#059669',
+                        warning: '#d97706',
+                        danger: '#dc2626',
+                        info: '#0ea5e9'
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <style>
+        .status-safe { @apply bg-green-100 text-green-800 border-green-200; }
+        .status-normal { @apply bg-blue-100 text-blue-800 border-blue-200; }
+        .status-warning { @apply bg-yellow-100 text-yellow-800 border-yellow-200; }
+        .status-danger { @apply bg-red-100 text-red-800 border-red-200; }
+        
+        .pulse { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+        .blink { animation: blink 1s step-end infinite; }
+        
+        @keyframes blink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0; }
+        }
+        
+        .glass {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-blue-50 to-indigo-100 min-h-screen">
+    
+    <!-- Navigation Header -->
+    <nav class="bg-white shadow-lg border-b border-gray-200">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center h-16">
+                <div class="flex items-center space-x-4">
+                    <div class="flex-shrink-0">
+                        <i class="fas fa-water text-2xl text-blue-600"></i>
+                    </div>
+                    <div>
+                        <h1 class="text-xl font-bold text-gray-800">Sistem Peringatan Dini Banjir</h1>
+                        <p class="text-sm text-gray-500">ESP32 Flood Early Warning System</p>
+                    </div>
+                </div>
+                
+                <div class="flex items-center space-x-4">
+                    <!-- System Status Indicator -->
+                    <div id="connectionStatus" class="flex items-center space-x-2">
+                        <div class="w-3 h-3 bg-gray-400 rounded-full pulse"></div>
+                        <span class="text-sm text-gray-600">Connecting...</span>
+                    </div>
+                    
+                    <!-- Last Update Time -->
+                    <div class="text-sm text-gray-500">
+                        <span>Update: </span>
+                        <span id="lastUpdateTime">--:--</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        
+        <!-- Alert Section -->
+        <div id="alertSection" class="mb-6 hidden">
+            <div class="bg-red-50 border-l-4 border-red-400 p-4 rounded-r-lg">
+                <div class="flex">
+                    <div class="flex-shrink-0">
+                        <i class="fas fa-exclamation-triangle text-red-400 text-xl"></i>
+                    </div>
+                    <div class="ml-3">
+                        <h3 class="text-lg font-medium text-red-800">Peringatan Aktif</h3>
+                        <div id="activeAlerts" class="mt-2 text-sm text-red-700">
+                            <!-- Alert items will be inserted here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Status Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            
+            <!-- Water Level Card -->
+            <div class="bg-white rounded-xl shadow-lg p-6 border-l-4 border-blue-500">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm font-medium text-gray-600">Ketinggian Air</p>
+                        <p id="waterLevel" class="text-3xl font-bold text-blue-600">0.0 m</p>
+                        <p id="waterLevelStatus" class="text-sm text-gray-500 mt-1">Normal</p>
+                    </div>
+                    <div class="p-3 bg-blue-100 rounded-full">
+                        <i class="fas fa-tint text-2xl text-blue-600"></i>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Warning Level Card -->
+            <div class="bg-white rounded-xl shadow-lg p-6 border-l-4" id="warningLevelCard">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm font-medium text-gray-600">Level Peringatan</p>
+                        <p id="warningLevel" class="text-3xl font-bold">0</p>
+                        <p id="warningLevelText" class="text-sm text-gray-500 mt-1">Aman</p>
+                    </div>
+                    <div class="p-3 rounded-full" id="warningLevelIcon">
+                        <i class="fas fa-shield-alt text-2xl"></i>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Battery Status Card -->
+            <div class="bg-white rounded-xl shadow-lg p-6 border-l-4 border-green-500">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm font-medium text-gray-600">Status Baterai</p>
+                        <p id="batteryVoltage" class="text-3xl font-bold text-green-600">0.0 V</p>
+                        <div class="w-full bg-gray-200 rounded-full h-2 mt-2">
+                            <div id="batteryBar" class="bg-green-500 h-2 rounded-full transition-all duration-500" style="width: 0%"></div>
+                        </div>
+                    </div>
+                    <div class="p-3 bg-green-100 rounded-full">
+                        <i id="batteryIcon" class="fas fa-battery-full text-2xl text-green-600"></i>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Solar Panel Card -->
+            <div class="bg-white rounded-xl shadow-lg p-6 border-l-4 border-yellow-500">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm font-medium text-gray-600">Panel Surya</p>
+                        <p id="solarVoltage" class="text-3xl font-bold text-yellow-600">0.0 V</p>
+                        <p id="solarStatus" class="text-sm text-gray-500 mt-1">Standby</p>
+                    </div>
+                    <div class="p-3 bg-yellow-100 rounded-full">
+                        <i class="fas fa-solar-panel text-2xl text-yellow-600"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Charts and Control Section -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+            
+            <!-- Water Level Chart -->
+            <div class="lg:col-span-2 bg-white rounded-xl shadow-lg p-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-lg font-semibold text-gray-800">Grafik Ketinggian Air</h3>
+                    <select id="chartPeriod" class="px-3 py-1 border border-gray-300 rounded-md text-sm">
+                        <option value="1h">1 Jam</option>
+                        <option value="6h">6 Jam</option>
+                        <option value="24h" selected>24 Jam</option>
+                        <option value="7d">7 Hari</option>
+                    </select>
+                </div>
+                <div class="h-64">
+                    <canvas id="waterLevelChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Control Panel -->
+            <div class="bg-white rounded-xl shadow-lg p-6">
+                <h3 class="text-lg font-semibold text-gray-800 mb-4">Panel Kontrol</h3>
+                
+                <!-- Manual Test Button -->
+                <button id="testLightsBtn" class="w-full mb-4 bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-4 rounded-lg transition-colors">
+                    <i class="fas fa-lightbulb mr-2"></i>
+                    Test Lampu & Sirine
+                </button>
+
+                <!-- System Status -->
+                <div class="mb-4 p-4 bg-gray-50 rounded-lg">
+                    <h4 class="text-sm font-medium text-gray-700 mb-2">Status Sistem</h4>
+                    <div class="space-y-2 text-sm">
+                        <div class="flex justify-between">
+                            <span>Pembacaan Hari Ini:</span>
+                            <span id="dailyReadings" class="font-medium">0</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span>Rata-rata Ketinggian:</span>
+                            <span id="avgWaterToday" class="font-medium">0.0 m</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span>Alert Hari Ini:</span>
+                            <span id="alertsToday" class="font-medium">0</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span>Uptime:</span>
+                            <span id="systemUptime" class="font-medium">--</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Quick Actions -->
+                <div class="space-y-2">
+                    <button id="refreshDataBtn" class="w-full bg-gray-600 hover:bg-gray-700 text-white font-medium py-2 px-4 rounded-lg transition-colors text-sm">
+                        <i class="fas fa-sync-alt mr-2"></i>
+                        Refresh Data
+                    </button>
+                    
+                    <button id="exportDataBtn" class="w-full bg-green-600 hover:bg-green-700 text-white font-medium py-2 px-4 rounded-lg transition-colors text-sm">
+                        <i class="fas fa-download mr-2"></i>
+                        Export Data
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Recent Events and System Log -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            
+            <!-- Recent Events -->
+            <div class="bg-white rounded-xl shadow-lg p-6">
+                <h3 class="text-lg font-semibold text-gray-800 mb-4">Event Terbaru</h3>
+                <div id="recentEvents" class="space-y-3">
+                    <!-- Events will be loaded here -->
+                </div>
+            </div>
+
+            <!-- System Information -->
+            <div class="bg-white rounded-xl shadow-lg p-6">
+                <h3 class="text-lg font-semibold text-gray-800 mb-4">Informasi Sistem</h3>
+                <div class="space-y-4">
+                    
+                    <!-- Threshold Settings -->
+                    <div class="border-b border-gray-200 pb-4">
+                        <h4 class="text-sm font-medium text-gray-700 mb-2">Threshold Peringatan</h4>
+                        <div class="grid grid-cols-3 gap-4 text-sm">
+                            <div class="text-center p-3 bg-green-50 rounded-lg">
+                                <div class="text-green-600 font-bold">Level 1</div>
+                                <div class="text-gray-600">≥ 1.0 m</div>
+                                <div class="text-xs text-green-600">Normal</div>
+                            </div>
+                            <div class="text-center p-3 bg-yellow-50 rounded-lg">
+                                <div class="text-yellow-600 font-bold">Level 2</div>
+                                <div class="text-gray-600">≥ 2.0 m</div>
+                                <div class="text-xs text-yellow-600">Waspada</div>
+                            </div>
+                            <div class="text-center p-3 bg-red-50 rounded-lg">
+                                <div class="text-red-600 font-bold">Level 3</div>
+                                <div class="text-gray-600">≥ 3.0 m</div>
+                                <div class="text-xs text-red-600">Bahaya</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Hardware Status -->
+                    <div>
+                        <h4 class="text-sm font-medium text-gray-700 mb-2">Status Hardware</h4>
+                        <div class="space-y-2 text-sm">
+                            <div class="flex justify-between items-center">
+                                <span>Sensor Ultrasonik:</span>
+                                <span class="px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs">Online</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span>Relay Module:</span>
+                                <span class="px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs">Active</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span>WiFi Connection:</span>
+                                <span id="wifiStatus" class="px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs">Connected</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span>Power System:</span>
+                                <span id="powerStatus" class="px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs">Normal</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="bg-white border-t border-gray-200 mt-12">
+        <div class="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center">
+                <div class="text-sm text-gray-500">
+                    © 2025 ESP32 Flood Early Warning System - Powered by Emergent AI
+                </div>
+                <div class="text-sm text-gray-500">
+                    Version 1.0 | <a href="#" class="text-blue-600 hover:text-blue-800">Documentation</a>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white rounded-lg p-6 flex items-center space-x-4">
+            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            <span class="text-gray-700">Loading...</span>
+        </div>
+    </div>
+
+    <script src="js/dashboard.js"></script>
+</body>
+</html>
