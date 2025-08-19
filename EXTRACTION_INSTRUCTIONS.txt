@@ -1,0 +1,37 @@
+📦 ESP32 Flood Warning System - Extraction Instructions
+
+For TAR.GZ file:
+================
+Windows (with 7-Zip):
+- Right-click → 7-Zip → Extract Here
+
+Windows (with WinRAR):
+- Right-click → Extract Here
+
+Mac:
+- Double-click the .tar.gz file
+- Or: tar -xzf ESP32-Flood-Warning-System-*.tar.gz
+
+Linux:
+- tar -xzf ESP32-Flood-Warning-System-*.tar.gz
+
+For ZIP file:
+=============
+Windows:
+- Right-click → Extract All
+
+Mac:
+- Double-click the .zip file
+
+Linux:
+- unzip ESP32-Flood-Warning-System-*.zip
+
+After extraction:
+================
+1. Open the extracted folder
+2. Read README.md for project overview
+3. Follow guides in docs/ folder
+4. Use Arduino IDE to upload .ino files to ESP32
+5. Setup web dashboard using web_dashboard/ files
+
+Happy coding! 🚀
